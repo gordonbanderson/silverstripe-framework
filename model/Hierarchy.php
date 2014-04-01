@@ -492,12 +492,16 @@ class Hierarchy extends DataExtension {
 	 * @return ArrayList
 	 */
 	public function Children() {
-		if(!(isset($this->_cache_children) && $this->_cache_children)) { 
-			$result = $this->owner->stageChildren(false); 
-			$this->_cache_children = $result->filterByCallback(function($item) {	
-				return $item->canView();
-			});
-					} 
+		if(!(isset($this->_cache_children) && $this->_cache_children)) {
+			if (!$this->owner->canView()) {
+				$this->_cache_children = new ArrayList();
+			} else {
+				$result = $this->owner->stageChildren(false); 
+				$this->_cache_children = $result->filterByCallback(function($item) {	
+					return $item->canView(null,true);
+				});
+			}
+		} 
 		return $this->_cache_children;
 	}
 
