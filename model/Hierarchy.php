@@ -494,6 +494,30 @@ class Hierarchy extends DataExtension {
 			}
 		}
 	}
+
+
+	/*
++	Add cached links to child pages of the current page in the site tree.  The link for the current page is calculated, and then for each child
++	the current URLSegment is appended.  A variable called CachedLink is populated for each child page
++	@param DataList $childPages - child pages of the current page
++	*/
+	private function add_cached_links_to_children($childPages) {
+		$currentLink = null;
+		if (isset($this->owner->CachedLink)) {
+			$currentLink = $this->owner->CachedLink;
+		} else {
+			$currentLink = $this->owner->Link();
+		}
+
+		$slash = '/'; // we want to skip it first time round
+
+		foreach ($childPages as $childPage) {
+			$childPage->CachedLink = $currentLink.$slash.$childPage->URLSegment;
+			$slash = '/';
+		}
+
+		return $childPages;
+	}
 	
 	/**
 	 * Get the children for this DataObject.
@@ -505,7 +529,8 @@ class Hierarchy extends DataExtension {
 			$this->_cache_children = $result->filterByCallback(function($item) {	
 				return $item->canView();
 			});
-					} 
+		}
+		$this->add_cached_links_to_children($this->_cache_children);
 		return $this->_cache_children;
 	}
 
