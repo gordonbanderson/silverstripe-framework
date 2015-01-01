@@ -903,9 +903,11 @@ class SQLQuery {
 				else if(sizeof($join['filter']) == 1) $filter = $join['filter'][0];
 				else $filter = "(" . implode(") AND (", $join['filter']) . ")";
 
+				$table = strpos(strtoupper($join['table']), 'SELECT') ? $join['table'] : "\"" 
+					. $join['table'] . "\"";
 				$aliasClause = ($alias != $join['table']) ? " AS \"" . Convert::raw2sql($alias) . "\"" : "";
-				$this->from[$alias] = strtoupper($join['type']) . " JOIN \"" 
-					. $join['table'] . "\"$aliasClause ON $filter";
+				$this->from[$alias] = strtoupper($join['type']) . " JOIN " 
+					. $table . "$aliasClause ON $filter";
 			}
 		}
 
@@ -997,8 +999,8 @@ class SQLQuery {
 		if($column == null) {
 			if($this->groupby) {
 				$countQuery = new SQLQuery();
-				$countQuery->select("count(*)");
-				$countQuery->from = array('(' . $clone->sql() . ') all_distinct');
+				$countQuery->setSelect("count(*)");
+				$countQuery->setFrom('(' . $clone->sql() . ') all_distinct');
 
 				return $countQuery->execute()->value();
 

@@ -28,6 +28,11 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 	protected $liveStage;
 	
 	/**
+	 * The default reading mode
+	 */
+	const DEFAULT_MODE = 'Stage.Live';
+	
+	/**
 	 * A version that a DataObject should be when it is 'migrating',
 	 * that is, when it is in the process of moving from one stage to another.
 	 * @var string
@@ -548,11 +553,9 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 				unset($manipulation[$table]);
 				continue;
 			}
-			$id = $manipulation[$table]['id'] ? $manipulation[$table]['id'] : $manipulation[$table]['fields']['ID'];;
-			if(!$id) user_error("Couldn't find ID in " . var_export($manipulation[$table], true), E_USER_ERROR);
+			$rid = $manipulation[$table]['id'] ? $manipulation[$table]['id'] : $manipulation[$table]['fields']['ID'];;
+			if(!$rid) user_error("Couldn't find ID in " . var_export($manipulation[$table], true), E_USER_ERROR);
 			
-			$rid = isset($manipulation[$table]['RecordID']) ? $manipulation[$table]['RecordID'] : $id;
-
 			$newManipulation = array(
 				"command" => "insert",
 				"fields" => isset($manipulation[$table]['fields']) ? $manipulation[$table]['fields'] : null
@@ -564,9 +567,9 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 
 			// If we haven't got a version #, then we're creating a new version.
 			// Otherwise, we're just copying a version to another table
-			if(!isset($manipulation[$table]['fields']['Version'])) {
+			if(empty($manipulation[$table]['fields']['Version'])) {
 				// Add any extra, unchanged fields to the version record.
-				$data = DB::query("SELECT * FROM \"$table\" WHERE \"ID\" = $id")->record();
+				$data = DB::query("SELECT * FROM \"$table\" WHERE \"ID\" = $rid")->record();
 				if($data) foreach($data as $k => $v) {
 					if (!isset($newManipulation['fields'][$k])) {
 						$newManipulation['fields'][$k] = "'" . Convert::raw2sql($v) . "'";
@@ -578,15 +581,15 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 				unset($newManipulation['fields']['ID']);
 
 				// Create a new version #
-				if (isset($version_table[$table])) $nextVersion = $version_table[$table];
-				else unset($nextVersion);
-
-				if($rid && !isset($nextVersion)) {
+				$nextVersion = 0;
+				if($rid) {
 					$nextVersion = DB::query("SELECT MAX(\"Version\") + 1 FROM \"{$baseDataClass}_versions\""
 						. " WHERE \"RecordID\" = $rid")->value();
 				}
+				$nextVersion = $nextVersion ?: 1;
 				
-				$newManipulation['fields']['Version'] = $nextVersion ? $nextVersion : 1;
+				// Add the version number to this data
+				$newManipulation['fields']['Version'] = $nextVersion;
 				
 				if($isRootClass) {
 					$userID = (Member::currentUser()) ? Member::currentUser()->ID : 0;
@@ -596,10 +599,7 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 
 
 				$manipulation["{$table}_versions"] = $newManipulation;
-
-				// Add the version number to this data
-				$manipulation[$table]['fields']['Version'] = $newManipulation['fields']['Version'];
-				$version_table[$table] = $nextVersion;
+				$manipulation[$table]['fields']['Version'] = $nextVersion;
 			}
 			
 			// Putting a Version of -1 is a signal to leave the version table alone, despite their being no version
@@ -622,7 +622,7 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 			) {
 				// If the record has already been inserted in the (table), get rid of it. 
 				if($manipulation[$table]['command']=='insert') {
-					DB::query("DELETE FROM \"{$table}\" WHERE \"ID\"='$id'");
+					DB::query("DELETE FROM \"{$table}\" WHERE \"ID\"='$rid'");
 				}
 				
 				$newTable = $table . '_' . Versioned::current_stage();
@@ -924,6 +924,7 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 		
 	//-----------------------------------------------------------------------------------------------//
 	
+	
 	/**
 	 * Choose the stage the site is currently on.
 	 *
@@ -935,23 +936,40 @@ class Versioned extends DataExtension implements TemplateGlobalProvider {
 	 *
 	 * If neither of these are set, it checks the session, otherwise the stage 
 	 * is set to 'Live'.
+	 * 
+	 * @param Session $session Optional session within which to store the resulting stage
 	 */
-	public static function choose_site_stage() {
+	public static function choose_site_stage($session = null) {
+		// Check any pre-existing session mode
+		$preexistingMode = $session
+			? $session->inst_get('readingMode')
+			: Session::get('readingMode');
+		
+		// Determine the reading mode
 		if(isset($_GET['stage'])) {
 			$stage = ucfirst(strtolower($_GET['stage']));
-			
 			if(!in_array($stage, array('Stage', 'Live'))) $stage = 'Live';
-
-			Session::set('readingMode', 'Stage.' . $stage);
-		}
-		if(isset($_GET['archiveDate']) && strtotime($_GET['archiveDate'])) {
-			Session::set('readingMode', 'Archive.' . $_GET['archiveDate']);
+			$mode = 'Stage.' . $stage;
+		} elseif (isset($_GET['archiveDate']) && strtotime($_GET['archiveDate'])) {
+			$mode = 'Archive.' . $_GET['archiveDate'];
+		} elseif($preexistingMode) {
+			$mode = $preexistingMode;
+		} else {
+			$mode = self::DEFAULT_MODE;
 		}
 		
-		if($mode = Session::get('readingMode')) {
-			Versioned::set_reading_mode($mode);
-		} else {
-			Versioned::reading_stage("Live");
+		// Save reading mode
+		Versioned::set_reading_mode($mode);
+		
+		// Try not to store the mode in the session if not needed
+		if(($preexistingMode && $preexistingMode !== $mode)
+			|| (!$preexistingMode && $mode !== self::DEFAULT_MODE)
+		) {
+			if($session) {
+				$session->inst_set('readingMode', $mode);
+			} else {
+				Session::set('readingMode', $mode);
+			}
 		}
 
 		if(!headers_sent() && !Director::is_cli()) {

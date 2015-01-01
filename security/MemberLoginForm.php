@@ -3,12 +3,12 @@
  * Log-in form for the "member" authentication method.
  *
  * Available extension points:
- * - "authenticationFailed": Called when login was not successful. 
+ * - "authenticationFailed": Called when login was not successful.
  *    Arguments: $data containing the form submission
- * - "forgotPassword": Called before forgot password logic kicks in, 
- *    allowing extensions to "veto" execution by returning FALSE. 
+ * - "forgotPassword": Called before forgot password logic kicks in,
+ *    allowing extensions to "veto" execution by returning FALSE.
  *    Arguments: $member containing the detected Member record
- * 
+ *
  * @package framework
  * @subpackage security
  */
@@ -21,16 +21,16 @@ class MemberLoginForm extends LoginForm {
 	public $loggedInAsField = 'FirstName';
 
 	protected $authenticator_class = 'MemberAuthenticator';
-	
+
 	/**
 	 * Since the logout and dologin actions may be conditionally removed, it's necessary to ensure these
 	 * remain valid actions regardless of the member login state.
 	 *
 	 * @var array
-	 * @config 
+	 * @config
 	 */
 	private static $allowed_actions = array('dologin', 'logout');
-	
+
 	/**
 	 * Constructor
 	 *
@@ -59,7 +59,7 @@ class MemberLoginForm extends LoginForm {
 		if(Director::fileExists($customCSS)) {
 			Requirements::css($customCSS);
 		}
-		
+
 		if(isset($_REQUEST['BackURL'])) {
 			$backURL = $_REQUEST['BackURL'];
 		} else {
@@ -80,12 +80,19 @@ class MemberLoginForm extends LoginForm {
 					new HiddenField("AuthenticationMethod", null, $this->authenticator_class, $this),
 					// Regardless of what the unique identifer field is (usually 'Email'), it will be held in the
 					// 'Email' value, below:
-					new TextField("Email", $label, Session::get('SessionForms.MemberLoginForm.Email'), null, $this),
+					$emailField = new TextField("Email", $label, null, null, $this),
 					new PasswordField("Password", _t('Member.PASSWORD', 'Password'))
 				);
+				if(Security::config()->remember_username) {
+					$emailField->setValue(Session::get('SessionForms.MemberLoginForm.Email'));
+				} else {
+					// Some browsers won't respect this attribute unless it's added to the form
+					$this->setAttribute('autocomplete', 'off');
+					$emailField->setAttribute('autocomplete', 'off');
+				}
 				if(Security::config()->autologin_enabled) {
 					$fields->push(new CheckboxField(
-						"Remember", 
+						"Remember",
 						_t('Member.REMEMBERME', "Remember me next time?")
 					));
 				}
@@ -114,28 +121,31 @@ class MemberLoginForm extends LoginForm {
 		$this->setValidator(new RequiredFields('Email', 'Password'));
 
 		// Focus on the email input when the page is loaded
-		Requirements::customScript(<<<JS
+		$js = <<<JS
 			(function() {
 				var el = document.getElementById("MemberLoginForm_LoginForm_Email");
-				if(el && el.focus) el.focus();
+				if(el && el.focus && (typeof jQuery == 'undefined' || jQuery(el).is(':visible'))) el.focus();
 			})();
-JS
-		);
+JS;
+		Requirements::customScript($js, 'MemberLoginFormFieldFocus');
 	}
 
 	/**
 	 * Get message from session
 	 */
 	protected function getMessageFromSession() {
-		parent::getMessageFromSession();
 		if(($member = Member::currentUser()) && !Session::get('MemberLoginForm.force_message')) {
 			$this->message = _t(
-				'Member.LOGGEDINAS', 
-				"You're logged in as {name}.", 
+				'Member.LOGGEDINAS',
+				"You're logged in as {name}.",
 				array('name' => $member->{$this->loggedInAsField})
 			);
 		}
 		Session::set('MemberLoginForm.force_message', false);
+
+		parent::getMessageFromSession();
+
+		return $this->message;
 	}
 
 
@@ -155,11 +165,11 @@ JS
 				Session::set('SessionForms.MemberLoginForm.Remember', isset($data['Remember']));
 			}
 
-			if(isset($_REQUEST['BackURL'])) $backURL = $_REQUEST['BackURL']; 
-			else $backURL = null; 
+			if(isset($_REQUEST['BackURL'])) $backURL = $_REQUEST['BackURL'];
+			else $backURL = null;
 
 			if($backURL) Session::set('BackURL', $backURL);
-			
+
 			// Show the right tab on failed login
 			$loginLink = Director::absoluteURL($this->controller->Link('login'));
 			if($backURL) $loginLink .= '?BackURL=' . urlencode($backURL);
@@ -191,10 +201,13 @@ JS
 				Session::set('BackURL', $backURL);
 			}
 			$cp = new ChangePasswordForm($this->controller, 'ChangePasswordForm');
-			$cp->sessionMessage('Your password has expired. Please choose a new one.', 'good');
+			$cp->sessionMessage(
+				_t('Member.PASSWORDEXPIRED', 'Your password has expired. Please choose a new one.'),
+				'good'
+			);
 			return $this->controller->redirect('Security/changepassword');
 		}
-		
+
 		// Absolute redirection URLs may cause spoofing
 		if(isset($_REQUEST['BackURL']) && $_REQUEST['BackURL'] && Director::is_site_url($_REQUEST['BackURL']) ) {
 			return $this->controller->redirect($_REQUEST['BackURL']);
@@ -305,7 +318,7 @@ JS
 				_t('Member.ENTEREMAIL', 'Please enter an email address to get a password reset link.'),
 				'bad'
 			);
-			
+
 			$this->controller->redirect('Security/lostpassword');
 		}
 	}

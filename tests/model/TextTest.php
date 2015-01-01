@@ -87,25 +87,64 @@ class TextTest extends SapphireTest {
 			$this->assertEquals($expectedValue, $textObj->LimitSentences(2));
 		}
 	}
-	
+
+	public function testFirstSentance() {
+		$cases = array(
+			'' => '',
+			'First sentence.' => 'First sentence.',
+			'First sentence. Second sentence' => 'First sentence.',
+			'First sentence? Second sentence' => 'First sentence?',
+			'First sentence! Second sentence' => 'First sentence!',
+			'<p>First sentence.</p>' => 'First sentence.',
+			'<p>First sentence. Second sentence. Third sentence</p>' => 'First sentence.',
+			'<p>First sentence. <em>Second sentence</em>. Third sentence</p>' => 'First sentence.',
+			'<p>First sentence. <em class="dummyClass">Second sentence</em>. Third sentence</p>'
+				=> 'First sentence.'
+		);
+
+		foreach($cases as $originalValue => $expectedValue) {
+			$textObj = new Text('Test');
+			$textObj->setValue($originalValue);
+			$this->assertEquals($expectedValue, $textObj->FirstSentence());
+		}
+	}
+
 	/**
 	 * Test {@link Text->BigSummary()}
 	 */
-	public function testBigSummary() {
+	public function testBigSummaryPlain() {
 		$cases = array(
-			'This text has multiple sentences. Big Summary uses this to split sentences up.'
+			'<p>This text has multiple sentences. Big Summary uses this to split sentences up.</p>'
 				=> 'This text has multiple...',
 			'This text does not have multiple sentences' => 'This text does not...',
 			'Very short' => 'Very short',
 			'' => ''
 		);
-		
+
 		foreach($cases as $originalValue => $expectedValue) {
 			$textObj = DBField::create_field('Text', $originalValue);
-			$this->assertEquals($expectedValue, $textObj->BigSummary(4));
+			$this->assertEquals($expectedValue, $textObj->BigSummary(4, true));
 		}
 	}
-	
+
+	/**
+	 * Test {@link Text->BigSummary()}
+	 */
+	public function testBigSummary() {
+		$cases = array(
+			'<strong>This</strong> text has multiple sentences. Big Summary uses this to split sentences up.</p>'
+				=> '<strong>This</strong> text has multiple...',
+			'This text does not have multiple sentences' => 'This text does not...',
+			'Very short' => 'Very short',
+			'' => ''
+		);
+
+		foreach($cases as $originalValue => $expectedValue) {
+			$textObj = DBField::create_field('Text', $originalValue);
+			$this->assertEquals($expectedValue, $textObj->BigSummary(4, false));
+		}
+	}
+
 	public function testContextSummary() {
 		$testString1 = '<p>This is some text. It is a test</p>';
 		$testKeywords1 = 'test';

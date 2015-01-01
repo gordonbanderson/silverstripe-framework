@@ -16,7 +16,6 @@ class SS_TemplateManifest {
 	protected $cacheKey;
 	protected $project;
 	protected $inited;
-	protected $forceRegen;
 	protected $templates = array();
 
 	/**
@@ -38,9 +37,35 @@ class SS_TemplateManifest {
 		$cacheClass = defined('SS_MANIFESTCACHE') ? SS_MANIFESTCACHE : 'ManifestCache_File';
 
 		$this->cache = new $cacheClass('templatemanifest'.($includeTests ? '_tests' : ''));
-		$this->cacheKey = 'manifest';
+		$this->cacheKey = $this->getCacheKey($includeTests);
+		
+		if ($forceRegen) {
+			$this->regenerate();
+		}
+	}
 
-		$this->forceRegen = $forceRegen;
+	/**
+	 * @return string
+	 */
+	public function getBase() {
+		return $this->base;
+	}
+
+	/**
+	 * Generate a unique cache key to avoid manifest cache collisions.
+	 * We compartmentalise based on the base path, the given project, and whether
+	 * or not we intend to include tests.
+	 * @param boolean $includeTests
+	 * @return string
+	 */
+	public function getCacheKey($includeTests = false) {
+		return sha1(sprintf(
+			"manifest-%s-%s-%s",
+				$this->base,
+				$this->project,
+				(int) $includeTests // cast true to 1, false to 0
+			)
+		);
 	}
 
 	/**
@@ -184,7 +209,7 @@ class SS_TemplateManifest {
 	}
 
 	protected function init() {
-		if (!$this->forceRegen && $data = $this->cache->load($this->cacheKey)) {
+		if ($data = $this->cache->load($this->cacheKey)) {
 			$this->templates = $data;
 			$this->inited    = true;
 		} else {

@@ -12,6 +12,24 @@ define('TEST_SERVICES', dirname(__FILE__) . '/testservices');
  */
 class InjectorTest extends SapphireTest {
 	
+	protected $nestingLevel = 0;
+	
+	public function setUp() {
+		parent::setUp();
+		
+		$this->nestingLevel = 0;
+	}
+	
+	public function tearDown() {
+		
+		while($this->nestingLevel > 0) {
+			$this->nestingLevel--;
+			Config::unnest();
+		}
+		
+		parent::tearDown();
+	}
+	
 	public function testCorrectlyInitialised() {
 		$injector = Injector::inst();
 		$this->assertTrue($injector->getConfigLocator() instanceof SilverStripeServiceConfigurationLocator,
@@ -439,6 +457,18 @@ class InjectorTest extends SapphireTest {
 		$si = $injector->get('TestStaticInjections');
 		$this->assertEquals('NewRequirementsBackend', get_class($si->backend));
 	}
+	
+	public function testSetterInjections() {
+		$injector = new Injector();
+		$config = array(
+			'NewRequirementsBackend',
+		);
+
+		$injector->load($config);
+
+		$si = $injector->get('TestSetterInjections');
+		$this->assertEquals('NewRequirementsBackend', get_class($si->getBackend()));
+	}
 
 	public function testCustomObjectCreator() {
 		$injector = new Injector();
@@ -456,13 +486,39 @@ class InjectorTest extends SapphireTest {
 	}
 
 	public function testInheritedConfig() {
+		
+		// Test top-down caching of config inheritance
 		$injector = new Injector(array('locator' => 'SilverStripeServiceConfigurationLocator'));
 		Config::inst()->update('Injector', 'MyParentClass', array('properties' => array('one' => 'the one')));
+		Config::inst()->update('Injector', 'MyChildClass', array('properties' => array('one' => 'the two')));
 		$obj = $injector->get('MyParentClass');
 		$this->assertEquals($obj->one, 'the one');
 		
 		$obj = $injector->get('MyChildClass');
-		$this->assertEquals($obj->one, 'the one');
+		$this->assertEquals($obj->one, 'the two');
+		
+		$obj = $injector->get('MyGrandChildClass');
+		$this->assertEquals($obj->one, 'the two');
+		
+		$obj = $injector->get('MyGreatGrandChildClass');
+		$this->assertEquals($obj->one, 'the two');
+		
+		// Test bottom-up caching of config inheritance
+		$injector = new Injector(array('locator' => 'SilverStripeServiceConfigurationLocator'));
+		Config::inst()->update('Injector', 'MyParentClass', array('properties' => array('one' => 'the three')));
+		Config::inst()->update('Injector', 'MyChildClass', array('properties' => array('one' => 'the four')));
+		
+		$obj = $injector->get('MyGreatGrandChildClass');
+		$this->assertEquals($obj->one, 'the four');
+		
+		$obj = $injector->get('MyGrandChildClass');
+		$this->assertEquals($obj->one, 'the four');
+		
+		$obj = $injector->get('MyChildClass');
+		$this->assertEquals($obj->one, 'the four');
+		
+		$obj = $injector->get('MyParentClass');
+		$this->assertEquals($obj->one, 'the three');
 	}
 	
 	public function testSameNamedSingeltonPrototype() {
@@ -562,20 +618,86 @@ class InjectorTest extends SapphireTest {
 
 		$this->assertInstanceOf('TestObject', $injector->get('service'));
 	}
+	
+	/**
+	 * Test nesting of injector
+	 */
+	public function testNest() {
+		
+		// Outer nest to avoid interference with other 
+		Injector::nest();
+		$this->nestingLevel++;
+		
+		// Test services
+		$config = array(
+			'NewRequirementsBackend',
+		);
+		Injector::inst()->load($config);
+		$si = Injector::inst()->get('TestStaticInjections');
+		$this->assertInstanceOf('TestStaticInjections', $si);
+		$this->assertInstanceOf('NewRequirementsBackend', $si->backend);
+		$this->assertInstanceOf('MyParentClass', Injector::inst()->get('MyParentClass'));
+		$this->assertInstanceOf('MyChildClass', Injector::inst()->get('MyChildClass'));
+		
+		// Test that nested injector values can be overridden
+		Injector::nest();
+		$this->nestingLevel++;
+		Injector::inst()->unregisterAllObjects();
+		$newsi = Injector::inst()->get('TestStaticInjections');
+		$newsi->backend = new OriginalRequirementsBackend();
+		Injector::inst()->registerService($newsi, 'TestStaticInjections');
+		Injector::inst()->registerService(new MyChildClass(), 'MyParentClass');
+		
+		// Check that these overridden values are retrievable
+		$si = Injector::inst()->get('TestStaticInjections');
+		$this->assertInstanceOf('TestStaticInjections', $si);
+		$this->assertInstanceOf('OriginalRequirementsBackend', $si->backend);
+		$this->assertInstanceOf('MyParentClass', Injector::inst()->get('MyParentClass'));
+		$this->assertInstanceOf('MyParentClass', Injector::inst()->get('MyChildClass'));
+		
+		// Test that unnesting restores expected behaviour
+		Injector::unnest();
+		$this->nestingLevel--;
+		$si = Injector::inst()->get('TestStaticInjections');
+		$this->assertInstanceOf('TestStaticInjections', $si);
+		$this->assertInstanceOf('NewRequirementsBackend', $si->backend);
+		$this->assertInstanceOf('MyParentClass', Injector::inst()->get('MyParentClass'));
+		$this->assertInstanceOf('MyChildClass', Injector::inst()->get('MyChildClass'));
+		
+		// Test reset of cache
+		Injector::inst()->unregisterAllObjects();
+		$si = Injector::inst()->get('TestStaticInjections');
+		$this->assertInstanceOf('TestStaticInjections', $si);
+		$this->assertInstanceOf('NewRequirementsBackend', $si->backend);
+		$this->assertInstanceOf('MyParentClass', Injector::inst()->get('MyParentClass'));
+		$this->assertInstanceOf('MyChildClass', Injector::inst()->get('MyChildClass'));
+		
+		// Return to nestingLevel 0
+		Injector::unnest();
+		$this->nestingLevel--;
+	}
 
 }
 
 class InjectorTestConfigLocator extends SilverStripeServiceConfigurationLocator implements TestOnly {
-	public function locateConfigFor($name) {
-		if ($name == 'TestObject') {
-			return array('class' => 'ConstructableObject', 'constructor' => array('%$OtherTestObject'));
+	
+	protected function configFor($name) {
+		
+		switch($name) {
+			case 'TestObject':
+				return $this->configs[$name] = array(
+					'class' => 'ConstructableObject',
+					'constructor' => array('%$OtherTestObject')
+				);
+				
+			case 'ConfigConstructor':
+				return $this->configs[$name] = array(
+					'class' => 'ConstructableObject',
+					'constructor' => array('value')
+				);
 		}
 
-		if ($name == 'ConfigConstructor') {
-			return array('class' => 'ConstructableObject', 'constructor' => array('value'));
-		}
-
-		return parent::locateConfigFor($name);
+		return parent::configFor($name);
 	}
 }
 
@@ -643,6 +765,12 @@ class MyParentClass implements TestOnly {
 class MyChildClass extends MyParentClass implements TestOnly {
 	
 }
+class MyGrandChildClass extends MyChildClass implements TestOnly {
+	
+}
+class MyGreatGrandChildClass extends MyGrandChildClass implements TestOnly {
+	
+}
 
 class DummyRequirements implements TestOnly {
 
@@ -674,6 +802,28 @@ class TestStaticInjections implements TestOnly {
 		'backend' => '%$NewRequirementsBackend'
 	);
 
+}
+
+/**
+ * Make sure DI works with ViewableData's implementation of __isset
+ */
+class TestSetterInjections extends ViewableData implements TestOnly {
+	
+	protected $backend;
+	
+	/** @config */
+	private static $dependencies = array(
+		'backend' => '%$NewRequirementsBackend'
+	);
+	
+	public function getBackend() {
+		return $this->backend;
+	}
+	
+	public function setBackend($backend) {
+		$this->backend = $backend;
+	}
+	
 }
 
 /**

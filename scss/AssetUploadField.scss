@@ -33,8 +33,7 @@
 	}
 }
 
-body.cms.ss-uploadfield-edit-iframe, .composite.ss-assetuploadfield .details fieldset {
-	padding: $grid-x*2;
+body.cms.ss-uploadfield-edit-iframe {
 	overflow: auto;
 	background: #E2E2E2;
 	
@@ -49,6 +48,11 @@ body.cms.ss-uploadfield-edit-iframe, .composite.ss-assetuploadfield .details fie
 			margin-left:0;
 		}
 	}
+}
+
+.composite.ss-assetuploadfield .details fieldset {
+	@extend body.cms.ss-uploadfield-edit-iframe;
+	padding: $grid-x*2;
 }
 
 .ss-assetuploadfield {
@@ -211,9 +215,6 @@ body.cms.ss-uploadfield-edit-iframe, .composite.ss-assetuploadfield .details fie
 				text-shadow: 0px 1px 0px rgba(#fff, 0.5);
 				
 				&.ui-state-error-text {
-					max-width:70%;
-					position:absolute;
-					right:5px;
 					text-shadow: 0px 1px 0px rgba(#fff, 0.6);
 					color: darken($color-button-destructive, 10%);
 				}
@@ -278,6 +279,8 @@ body.cms.ss-uploadfield-edit-iframe, .composite.ss-assetuploadfield .details fie
 
 			iframe {
 				width: 100%;
+				padding: $grid-x*2;
+				background: #E2E2E2;
 			}
 		}
 	}

@@ -149,11 +149,13 @@ class DataQuery {
 		}
 
 		$query = clone $this->query;
+		$ancestorTables = ClassInfo::ancestry($this->dataClass, true);
 
-		// Generate the list of tables to iterate over and the list of columns required by any existing where clauses.
-		// This second step is skipped if we're fetching the whole dataobject as any required columns will get selected
-		// regardless.
+		// Generate the list of tables to iterate over and the list of columns required
+		// by any existing where clauses. This second step is skipped if we're fetching
+		// the whole dataobject as any required columns will get selected regardless.
 		if($queriedColumns) {
+			// Specifying certain columns allows joining of child tables
 			$tableClasses = ClassInfo::dataClassesFor($this->dataClass);
 
 			foreach ($query->getWhere() as $where) {
@@ -163,8 +165,9 @@ class DataQuery {
 					if (!in_array($matches[1], $queriedColumns)) $queriedColumns[] = $matches[1];
 				}
 			}
+		} else {
+			$tableClasses = $ancestorTables;
 		}
-		else $tableClasses = ClassInfo::ancestry($this->dataClass, true);
 
 		$tableNames = array_keys($tableClasses);
 		$baseClass = $tableNames[0];
@@ -172,30 +175,26 @@ class DataQuery {
 		// Iterate over the tables and check what we need to select from them. If any selects are made (or the table is
 		// required for a select)
 		foreach($tableClasses as $tableClass) {
-			$joinTable = false;
 
-			// If queriedColumns is set, then check if any of the fields are in this table.
+			// Determine explicit columns to select
+			$selectColumns = null;
 			if ($queriedColumns) {
+				// Restrict queried columns to that on the selected table
 				$tableFields = DataObject::database_fields($tableClass);
-				$selectColumns = array();
-				// Look through columns specifically requested in query (or where clause)
-				foreach ($queriedColumns as $queriedColumn) {
-					if (array_key_exists($queriedColumn, $tableFields)) {
-						$selectColumns[] = $queriedColumn;
-					}
-				}
-
+				$selectColumns = array_intersect($queriedColumns, array_keys($tableFields));
+			}
+			
+			// If this is a subclass without any explicitly requested columns, omit this from the query
+			if(!in_array($tableClass, $ancestorTables) && empty($selectColumns)) continue;
+			
+			// Select necessary columns (unless an explicitly empty array)
+			if($selectColumns !== array()) {
 				$this->selectColumnsFromTable($query, $tableClass, $selectColumns);
-				if ($selectColumns && $tableClass != $baseClass) {
-					$joinTable = true;
-				}
-			} else {
-				$this->selectColumnsFromTable($query, $tableClass);
-				if ($tableClass != $baseClass) $joinTable = true;
 			}
 
-			if ($joinTable) {
-				$query->addLeftJoin($tableClass, "\"$tableClass\".\"ID\" = \"$baseClass\".\"ID\"", $tableClass, 10) ;
+			// Join if not the base table
+			if($tableClass !== $baseClass) {
+				$query->addLeftJoin($tableClass, "\"$tableClass\".\"ID\" = \"$baseClass\".\"ID\"", $tableClass, 10);
 			}
 		}
 		
@@ -257,6 +256,7 @@ class DataQuery {
 
 		if($orderby = $query->getOrderBy()) {
 			$newOrderby = array();
+			$i = 0;
 			foreach($orderby as $k => $dir) {
 				$newOrderby[$k] = $dir;
 				
@@ -269,7 +269,10 @@ class DataQuery {
 
 				// Pull through SortColumn references from the originalSelect variables
 				if(preg_match('/_SortColumn/', $col)) {
-					if(isset($originalSelect[$col])) $query->selectField($originalSelect[$col], $col);
+					if(isset($originalSelect[$col])) {
+						$query->selectField($originalSelect[$col], $col);
+					}
+
 					continue;
 				}
 				
@@ -288,6 +291,7 @@ class DataQuery {
 						
 					// remove original sort
 					unset($newOrderby[$k]);
+
 					// add new columns sort
 					$newOrderby[$qualCol] = $dir;
 							
@@ -299,13 +303,17 @@ class DataQuery {
 					}
 				} else {
 					$qualCol = '"' . implode('"."', $parts) . '"';
-					
-					// To-do: Remove this if block once SQLQuery::$select has been refactored to store getSelect()
-					// format internally; then this check can be part of selectField()
+
 					if(!in_array($qualCol, $query->getSelect())) {
-						$query->selectField($qualCol);
+						unset($newOrderby[$k]);
+						
+						$newOrderby["\"_SortColumn$i\""] = $dir;
+						$query->selectField($qualCol, "_SortColumn$i");
+
+						$i++;
 					}
 				}
+
 			}
 
 			$query->setOrderBy($newOrderby);
@@ -422,7 +430,7 @@ class DataQuery {
 	}
 	
 	/**
-	 * Set the GROUP BY clause of this query.
+	 * Append a GROUP BY clause to this query.
 	 * 
 	 * @param String $groupby Escaped SQL statement
 	 */
@@ -432,7 +440,7 @@ class DataQuery {
 	}
 	
 	/**
-	 * Set the HAVING clause of this query.
+	 * Append a HAVING clause to this query.
 	 * 
 	 * @param String $having Escaped SQL statement
 	 */
@@ -464,7 +472,7 @@ class DataQuery {
 	}
 
 	/**
-	 * Set the WHERE clause of this query.
+	 * Append a WHERE clause to this query.
 	 * There are two different ways of doing this:
 	 *
 	 * <code>
@@ -485,7 +493,7 @@ class DataQuery {
 	}
 
 	/**
-	 * Set a WHERE with OR.
+	 * Append a WHERE with OR.
 	 * 
 	 * @example $dataQuery->whereAny(array("\"Monkey\" = 'Chimp'", "\"Color\" = 'Brown'"));
 	 * @see where()
@@ -542,6 +550,17 @@ class DataQuery {
 	}
 
 	/**
+	 * Set whether this query should be distinct or not.
+	 *
+	 * @param bool $value
+	 * @return DataQuery
+	 */
+	public function distinct($value) {
+		$this->query->setDistinct($value);
+		return $this;
+	}
+
+	/**
 	 * Add an INNER JOIN clause to this query.
 	 * 
 	 * @param String $table The unquoted table name to join to.
@@ -589,9 +608,11 @@ class DataQuery {
 			$model = singleton($modelClass);
 			if ($component = $model->has_one($rel)) {
 				if(!$this->query->isJoinedTo($component)) {
-					$foreignKey = $model->getReverseAssociation($component);
+					$has_one = array_flip($model->has_one());
+					$foreignKey = $has_one[$component];
+					$realModelClass = ClassInfo::table_for_object_field($modelClass, "{$foreignKey}ID");
 					$this->query->addLeftJoin($component,
-						"\"$component\".\"ID\" = \"{$modelClass}\".\"{$foreignKey}ID\"");
+						"\"$component\".\"ID\" = \"{$realModelClass}\".\"{$foreignKey}ID\"");
 				
 					/**
 					 * add join clause to the component's ancestry classes so that the search filter could search on
@@ -687,7 +708,8 @@ class DataQuery {
 	/**
 	 * Query the given field column from the database and return as an array.
 	 * 
-	 * @param String $field See {@link expressionForField()}.
+	 * @param string $field See {@link expressionForField()}.
+	 * @return array List of column values for the specified column
 	 */
 	public function column($field = 'ID') {
 		$fieldExpression = $this->expressionForField($field);

@@ -621,6 +621,12 @@ class UploadFieldTest extends FunctionalTest {
 			(bool)$parser->getBySelector('#CanAttachExistingFalseField .ss-uploadfield-fromfiles'),
 			'Removes "From files" button'
 		);
+
+		// Test requests to select files have the correct given permission
+		$response2 = $this->get('UploadFieldTest_Controller/Form/field/CanAttachExistingFalseField/select');
+		$this->assertEquals(403, $response2->getStatusCode());
+		$response3 = $this->get('UploadFieldTest_Controller/Form/field/HasOneFile/select');
+		$this->assertEquals(200, $response3->getStatusCode());
 	}
 
 	public function testSelect() {
@@ -680,6 +686,30 @@ class UploadFieldTest extends FunctionalTest {
 		$responseExistsData = json_decode($responseExists->getBody());
 		$this->assertFalse($responseExists->isError());
 		$this->assertTrue($responseExistsData->exists);
+		
+		// Test that files with invalid characters are rewritten safely and both report exists
+		// Check that uploaded files can be detected in the root
+		$tmpFileName = '_test___Upload___Bad.txt';
+		$tmpFileNameExpected = 'test-Upload-Bad.txt';
+		$response = $this->mockFileUpload('NoRelationField', $tmpFileName);
+		$this->assertFalse($response->isError());
+		$this->assertFileExists(ASSETS_PATH . "/UploadFieldTest/$tmpFileNameExpected");
+		// With original file
+		$responseExists = $this->mockFileExists('NoRelationField', $tmpFileName);
+		$responseExistsData = json_decode($responseExists->getBody());
+		$this->assertFalse($responseExists->isError());
+		$this->assertTrue($responseExistsData->exists);
+		// With rewritten file
+		$responseExists = $this->mockFileExists('NoRelationField', $tmpFileNameExpected);
+		$responseExistsData = json_decode($responseExists->getBody());
+		$this->assertFalse($responseExists->isError());
+		$this->assertTrue($responseExistsData->exists);
+		
+		// Test that attempts to navigate outside of the directory return false
+		$responseExists = $this->mockFileExists('NoRelationField', "../../../../var/private/$tmpFileName");
+		$responseExistsData = json_decode($responseExists->getBody());
+		$this->assertTrue($responseExists->isError());
+		$this->assertContains('File is not a valid upload', $responseExists->getBody());
 	}
 
 	protected function getMockForm() {

@@ -339,7 +339,7 @@ class GridField extends FormField {
 		if($total > 0) {
 			$rows = array();
 			foreach($list as $idx => $record) {
-				if(!$record->canView()) {
+				if($record->hasMethod('canView') && !$record->canView()) {
 					continue;
 				}
 				$rowContent = '';
@@ -840,7 +840,7 @@ class GridField_FormAction extends FormAction {
 			'args' => $this->args,
 		);
 
-		$id = preg_replace('/[^\w]+/', '_', uniqid('', true));
+		$id = md5(serialize($state));
 		Session::set($id, $state);
 		$actionData['StateID'] = $id;
 		
