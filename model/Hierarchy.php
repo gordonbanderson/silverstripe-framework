@@ -525,8 +525,12 @@ class Hierarchy extends DataExtension {
 	 */
 	public function Children() {
 		if(!(isset($this->_cache_children) && $this->_cache_children)) { 
-			$result = $this->owner->stageChildren(false); 
-			$this->_cache_children = $result->filterByCallback(function($item) {	
+			$result = $this->owner->stageChildren(false);
+			$cachedparent = $this->owner;
+			$this->_cache_children = $result->filterByCallback(function($item) use ($cachedparent) {
+				// set a cached parent, otherwise it needs to be retrieved from the database
+				// for each and every child element	
+				$item->CachedParent = $cachedparent;
 				return $item->canView();
 			});
 		}
