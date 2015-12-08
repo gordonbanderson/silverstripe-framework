@@ -53,6 +53,7 @@ class MySQLiConnector extends DBConnector {
 	}
 
 	public function connect($parameters, $selectDB = false) {
+		error_log("Making new connection to mysql");
 		// Normally $selectDB is set to false by the MySQLDatabase controller, as per convention
 		$selectedDB = ($selectDB && !empty($parameters['database'])) ? $parameters['database'] : null;
 
@@ -85,6 +86,7 @@ class MySQLiConnector extends DBConnector {
 	}
 
 	public function __destruct() {
+		error_log('Calling sql connector destruct');
 		if ($this->dbConn) {
 			mysqli_close($this->dbConn);
 			$this->dbConn = null;
@@ -103,10 +105,10 @@ class MySQLiConnector extends DBConnector {
 	public function getVersion() {
 		return $this->dbConn->server_info;
 	}
-	
+
 	/**
 	 * Invoked before any query is executed
-	 * 
+	 *
 	 * @param string $sql
 	 */
 	protected function beforeQuery($sql) {
@@ -206,7 +208,11 @@ class MySQLiConnector extends DBConnector {
 		call_user_func_array( array($statement, 'bind_param'), $boundNames);
 	}
 
+	static $cached_statements = array();
+	static $preparedCtr = 0;
+
 	public function preparedQuery($sql, $parameters, $errorLevel = E_USER_ERROR) {
+		self::$preparedCtr++;
 		// Shortcut to basic query when not given parameters
 		if(empty($parameters)) {
 			return $this->query($sql, $errorLevel);
@@ -218,7 +224,22 @@ class MySQLiConnector extends DBConnector {
 		$parsedParameters = $this->parsePreparedParameters($parameters, $blobs);
 
 		// Benchmark query
-		$statement = $this->prepareStatement($sql, $success);
+		$success = true;
+		$hash = hash('ripemd160', $sql);
+		if (isset(self::$cached_statements[$hash])) {
+			$statement = self::$cached_statements[$hash];
+			error_log('CACHED STATEMENT '.$statement->Identifier);
+		} else {
+			$statement = $this->prepareStatement($sql, $success);
+			$statement->Identifier = self::$preparedCtr;
+			error_log('CREATE STATEMENT '.$statement->Identifier);
+
+			// only cache if successful
+			if ($success) {
+				self::$cached_statements[$hash] = $statement;
+			}
+		}
+
 		if($success) {
 			if($parsedParameters) {
 				$this->bindParameters($statement, $parsedParameters);
@@ -231,8 +252,9 @@ class MySQLiConnector extends DBConnector {
 
 			// Safely execute the statement
 			$statement->execute();
+			error_log("Error message is".mysqli_stmt_error($statement));
 		}
-		
+
 		if (!$success || $statement->error) {
 			$values = $this->parameterValues($parameters);
 			$this->databaseError($this->getLastError(), $errorLevel, $sql, $values);
