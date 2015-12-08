@@ -84,7 +84,8 @@ class MySQLStatement extends SS_Query {
 	}
 
 	public function __destruct() {
-		$this->statement->close();
+		error_log('**** CLOSING STATEMENT '.$this->statement->Identifier);
+		//$this->statement->close();
 		$this->closed = true;
 		$this->currentRecord = false;
 	}
