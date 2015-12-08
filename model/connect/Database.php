@@ -121,6 +121,7 @@ abstract class SS_Database {
 	 * @return SS_Query
 	 */
 	public function preparedQuery($sql, $parameters, $errorLevel = E_USER_ERROR) {
+		error_log('Preparing query '. $sql);
 		// Check if we should only preview this query
 		if ($this->previewWrite($sql)) {
 			return;
@@ -179,7 +180,7 @@ abstract class SS_Database {
 				$message .= "\nparams: \"" . implode('", "', $parameters) . '"';
 			}
 			Debug::message("\n{$message}\n{$endtime}s\n", false);
-			
+
 			return $result;
 		} else {
 			return $callback($sql);
