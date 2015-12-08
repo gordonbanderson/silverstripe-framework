@@ -53,7 +53,7 @@ class MySQLiConnector extends DBConnector {
 	}
 
 	public function connect($parameters, $selectDB = false) {
-		error_log("Making new connection to mysql");
+		self::$instance_ctr++;
 		// Normally $selectDB is set to false by the MySQLDatabase controller, as per convention
 		$selectedDB = ($selectDB && !empty($parameters['database'])) ? $parameters['database'] : null;
 
@@ -86,7 +86,17 @@ class MySQLiConnector extends DBConnector {
 	}
 
 	public function __destruct() {
-		error_log('Calling sql connector destruct');
+		//Close prepared statements
+		if (isset(self::$cached_statements[self::$instance_ctr])) {
+			$keys = array_keys(self::$cached_statements[self::$instance_ctr]);
+			foreach ($keys as $key) {
+				$statement = self::$cached_statements[self::$instance_ctr][$key];
+				$statement->close();
+				unset(self::$cached_statements[self::$instance_ctr][$key]);
+			}
+		}
+
+
 		if ($this->dbConn) {
 			mysqli_close($this->dbConn);
 			$this->dbConn = null;
@@ -227,16 +237,17 @@ class MySQLiConnector extends DBConnector {
 		$success = true;
 		$hash = hash('ripemd160', $sql);
 		if (isset(self::$cached_statements[$hash])) {
-			$statement = self::$cached_statements[$hash];
-			error_log('CACHED STATEMENT '.$statement->Identifier);
+			$statement = self::$cached_statements[self::$instance_ctr][$hash];
 		} else {
 			$statement = $this->prepareStatement($sql, $success);
 			$statement->Identifier = self::$preparedCtr;
-			error_log('CREATE STATEMENT '.$statement->Identifier);
 
 			// only cache if successful
 			if ($success) {
-				self::$cached_statements[$hash] = $statement;
+				if (!isset(self::$cached_statements[self::$instance_ctr])) {
+					self::$cached_statements[self::$instance_ctr] = array();
+				}
+				self::$cached_statements[self::$instance_ctr][$hash] = $statement;
 			}
 		}
 
@@ -252,7 +263,6 @@ class MySQLiConnector extends DBConnector {
 
 			// Safely execute the statement
 			$statement->execute();
-			error_log("Error message is".mysqli_stmt_error($statement));
 		}
 
 		if (!$success || $statement->error) {
