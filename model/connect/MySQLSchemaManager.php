@@ -21,6 +21,13 @@ class MySQLSchemaManager extends DBSchemaManager {
 	 */
 	protected $_cached_field_list = array();
 
+	/**
+	 * @var array Cached copy of the indexList() method to cut down on DB
+	 *      queries during testing.  It is a mapping of table name to an array
+	 *      containing details about the indexes for that table
+	 */
+	protected $_cached_index_list = array();
+
 	public function createTable($table, $fields = null, $indexes = null, $options = null, $advancedOptions = null) {
 		$fieldSchemas = $indexSchemas = "";
 
@@ -121,6 +128,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 		$alterations = implode(",\n", $alterList);
 		$this->query("ALTER TABLE \"$tableName\" $alterations");
 		$this->flushCachedFieldList($tableName);
+		$this->flushCachedIndexList($tableName); // in case index on this field
 	}
 
 	public function isView($tableName) {
@@ -276,6 +284,10 @@ class MySQLSchemaManager extends DBSchemaManager {
 		return $fieldList;
 	}
 
+	/**
+	 * Flush the field list cache for the given table
+	 * @param  string $tableName name of a table in the database
+	 */
 	private function flushCachedFieldList($tableName) {
 		if (isset($this->_cached_field_list[$tableName])) {
 			$this->_cached_field_list[$tableName] = array();
@@ -292,6 +304,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 	 */
 	public function createIndex($tableName, $indexName, $indexSpec) {
 		$this->query("ALTER TABLE \"$tableName\" ADD " . $this->getIndexSqlDefinition($indexName, $indexSpec));
+		$this->flushCachedIndexList($tableName);
 	}
 
 	/**
@@ -314,6 +327,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 		$indexSpec = $this->parseIndexSpec($indexName, $indexSpec);
 		$this->query("ALTER TABLE \"$tableName\" DROP INDEX \"$indexName\"");
 		$this->query("ALTER TABLE \"$tableName\" ADD {$indexSpec['type']} \"$indexName\" {$indexSpec['value']}");
+		$this->flushCachedIndexList($tableName);
 	}
 
 	protected function indexKey($table, $index, $spec) {
@@ -322,38 +336,54 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	public function indexList($table) {
-		$indexes = $this->query("SHOW INDEXES IN \"$table\"");
-		$groupedIndexes = array();
-		$indexList = array();
+		$indexList = isset($this->_cached_index_list[$table]) ? $this->_cached_index_list[$table] : null;
+		if (empty($indexList)) {
 
-		foreach ($indexes as $index) {
-			$groupedIndexes[$index['Key_name']]['fields'][$index['Seq_in_index']] = $index['Column_name'];
+			$indexes = $this->query("SHOW INDEXES IN \"$table\"");
+			$groupedIndexes = array();
+			$indexList = array();
 
-			if ($index['Index_type'] == 'FULLTEXT') {
-				$groupedIndexes[$index['Key_name']]['type'] = 'fulltext';
-			} else if (!$index['Non_unique']) {
-				$groupedIndexes[$index['Key_name']]['type'] = 'unique';
-			} else if ($index['Index_type'] == 'HASH') {
-				$groupedIndexes[$index['Key_name']]['type'] = 'hash';
-			} else if ($index['Index_type'] == 'RTREE') {
-				$groupedIndexes[$index['Key_name']]['type'] = 'rtree';
-			} else {
-				$groupedIndexes[$index['Key_name']]['type'] = 'index';
+			foreach ($indexes as $index) {
+				$groupedIndexes[$index['Key_name']]['fields'][$index['Seq_in_index']] = $index['Column_name'];
+
+				if ($index['Index_type'] == 'FULLTEXT') {
+					$groupedIndexes[$index['Key_name']]['type'] = 'fulltext';
+				} else if (!$index['Non_unique']) {
+					$groupedIndexes[$index['Key_name']]['type'] = 'unique';
+				} else if ($index['Index_type'] == 'HASH') {
+					$groupedIndexes[$index['Key_name']]['type'] = 'hash';
+				} else if ($index['Index_type'] == 'RTREE') {
+					$groupedIndexes[$index['Key_name']]['type'] = 'rtree';
+				} else {
+					$groupedIndexes[$index['Key_name']]['type'] = 'index';
+				}
 			}
-		}
 
-		if ($groupedIndexes) {
-			foreach ($groupedIndexes as $index => $details) {
-				ksort($details['fields']);
-				$indexList[$index] = $this->parseIndexSpec($index, array(
-					'name' => $index,
-					'value' => $this->implodeColumnList($details['fields']),
-					'type' => $details['type']
-				));
+			if ($groupedIndexes) {
+				foreach ($groupedIndexes as $index => $details) {
+					ksort($details['fields']);
+					$indexList[$index] = $this->parseIndexSpec($index, array(
+						'name' => $index,
+						'value' => $this->implodeColumnList($details['fields']),
+						'type' => $details['type']
+					));
+				}
 			}
+
+			$this->_cached_index_list[$table] = $indexList;
 		}
 
 		return $indexList;
+	}
+
+	/**
+	 * Flush the index list cache for the given table
+	 * @param  string $tableName name of a table in the database
+	 */
+	private function flushCachedIndexList($tableName) {
+		if (isset($this->_cached_index_list[$tableName])) {
+			$this->_cached_index_list[$tableName] = array();
+		}
 	}
 
 	public function tableList() {
