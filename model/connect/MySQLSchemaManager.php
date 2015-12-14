@@ -14,6 +14,13 @@ class MySQLSchemaManager extends DBSchemaManager {
 	 */
 	const ID = 'MySQLDatabase';
 
+	/**
+	 * @var array Cached copy of the fieldList() method to cut down on DB
+	 *      queries during testing.  It is a mapping of table name to an array
+	 *      containing details about the fields for that table
+	 */
+	protected $_cached_field_list = array();
+
 	public function createTable($table, $fields = null, $indexes = null, $options = null, $advancedOptions = null) {
 		$fieldSchemas = $indexSchemas = "";
 
@@ -113,6 +120,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 
 		$alterations = implode(",\n", $alterList);
 		$this->query("ALTER TABLE \"$tableName\" $alterations");
+		$this->flushCachedFieldList($tableName);
 	}
 
 	public function isView($tableName) {
@@ -122,6 +130,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 
 	public function renameTable($oldTableName, $newTableName) {
 		$this->query("ALTER TABLE \"$oldTableName\" RENAME \"$newTableName\"");
+		$this->flushCachedFieldList($oldTableName);
 	}
 
 	public function checkAndRepairTable($tableName) {
@@ -145,6 +154,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 					"Table $tableName: renamed from lowercase",
 					"repaired"
 				);
+				$this->flushCachedFieldList($tableName);
 				return $this->renameTable(strtolower($tableName), $tableName);
 			}
 
@@ -152,6 +162,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 				"Table $tableName: repaired",
 				"repaired"
 			);
+			$this->flushCachedFieldList($tableName);
 			return $this->runTableCheckCommand("REPAIR TABLE \"$tableName\" USE_FRM");
 		} else {
 			return true;
@@ -181,6 +192,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 
 	public function createField($tableName, $fieldName, $fieldSpec) {
 		$this->query("ALTER TABLE \"$tableName\" ADD \"$fieldName\" $fieldSpec");
+		$this->flushCachedFieldList($tableName);
 	}
 
 	public function databaseList() {
@@ -209,6 +221,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 	 */
 	public function alterField($tableName, $fieldName, $fieldSpec) {
 		$this->query("ALTER TABLE \"$tableName\" CHANGE \"$fieldName\" \"$fieldName\" $fieldSpec");
+		$this->flushCachedFieldList($tableName);
 	}
 
 	/**
@@ -222,39 +235,51 @@ class MySQLSchemaManager extends DBSchemaManager {
 		$fieldList = $this->fieldList($tableName);
 		if (array_key_exists($oldName, $fieldList)) {
 			$this->query("ALTER TABLE \"$tableName\" CHANGE \"$oldName\" \"$newName\" " . $fieldList[$oldName]);
+			$this->flushCachedFieldList($tableName);
 		}
 	}
 
 	protected static $_cache_collation_info = array();
 
 	public function fieldList($table) {
-		$fields = $this->query("SHOW FULL FIELDS IN \"$table\"");
-		foreach ($fields as $field) {
-
-			// ensure that '' is converted to \' in field specification (mostly for the benefit of ENUM values)
-			$fieldSpec = str_replace('\'\'', '\\\'', $field['Type']);
-			if (!$field['Null'] || $field['Null'] == 'NO') {
-				$fieldSpec .= ' not null';
-			}
-
-			if ($field['Collation'] && $field['Collation'] != 'NULL') {
-				// Cache collation info to cut down on database traffic
-				if (!isset(self::$_cache_collation_info[$field['Collation']])) {
-					self::$_cache_collation_info[$field['Collation']]
-						= $this->query("SHOW COLLATION LIKE '{$field['Collation']}'")->record();
+		$fieldList = isset($this->_cached_field_list[$table]) ? $this->_cached_field_list[$table] : null;
+		if (empty($fieldList)) {
+			$fields = $this->query("SHOW FULL FIELDS IN \"$table\"");
+			foreach ($fields as $field) {
+				// ensure that '' is converted to \' in field specification (mostly for the benefit of ENUM values)
+				$fieldSpec = str_replace('\'\'', '\\\'', $field['Type']);
+				if (!$field['Null'] || $field['Null'] == 'NO') {
+					$fieldSpec .= ' not null';
 				}
-				$collInfo = self::$_cache_collation_info[$field['Collation']];
-				$fieldSpec .= " character set $collInfo[Charset] collate $field[Collation]";
+
+				if ($field['Collation'] && $field['Collation'] != 'NULL') {
+					// Cache collation info to cut down on database traffic
+					if (!isset(self::$_cache_collation_info[$field['Collation']])) {
+						self::$_cache_collation_info[$field['Collation']]
+							= $this->query("SHOW COLLATION LIKE '{$field['Collation']}'")->record();
+					}
+					$collInfo = self::$_cache_collation_info[$field['Collation']];
+					$fieldSpec .= " character set $collInfo[Charset] collate $field[Collation]";
+				}
+
+				if ($field['Default'] || $field['Default'] === "0") {
+					$fieldSpec .= " default " . $this->database->quoteString($field['Default']);
+				}
+				if ($field['Extra']) $fieldSpec .= " " . $field['Extra'];
+
+				$fieldList[$field['Field']] = $fieldSpec;
 			}
 
-			if ($field['Default'] || $field['Default'] === "0") {
-				$fieldSpec .= " default " . $this->database->quoteString($field['Default']);
-			}
-			if ($field['Extra']) $fieldSpec .= " " . $field['Extra'];
-
-			$fieldList[$field['Field']] = $fieldSpec;
+			$this->_cached_field_list[$table] = $fieldList;
 		}
+
 		return $fieldList;
+	}
+
+	private function flushCachedFieldList($tableName) {
+		if (isset($this->_cached_field_list[$tableName])) {
+			$this->_cached_field_list[$tableName] = array();
+		}
 	}
 
 	/**
