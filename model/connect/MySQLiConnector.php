@@ -103,15 +103,20 @@ class MySQLiConnector extends DBConnector {
 	public function getVersion() {
 		return $this->dbConn->server_info;
 	}
-	
+
 	/**
 	 * Invoked before any query is executed
-	 * 
 	 * @param string $sql
 	 */
 	protected function beforeQuery($sql) {
 		// Clear the last statement
 		$this->setLastStatement(null);
+
+		// Flush if necessary
+		if($this->isQueryDDL($sql)) {
+			$schema = DB::get_schema();
+			$schema->flushCachedSchema();
+		}
 	}
 
 	public function query($sql, $errorLevel = E_USER_ERROR) {
@@ -232,7 +237,7 @@ class MySQLiConnector extends DBConnector {
 			// Safely execute the statement
 			$statement->execute();
 		}
-		
+
 		if (!$success || $statement->error) {
 			$values = $this->parameterValues($parameters);
 			$this->databaseError($this->getLastError(), $errorLevel, $sql, $values);
