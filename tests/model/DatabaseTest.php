@@ -87,6 +87,8 @@ class DatabaseTest extends SapphireTest {
 	public function testSchemaUpdateChecking() {
 		$schema = DB::get_schema();
 
+		error_log('SCHEMA:'.get_class($schema));
+
 		// Initially, no schema changes necessary
 		$test = $this;
 		$schema->schemaUpdate(function() use ($test, $schema) {
@@ -149,6 +151,108 @@ class DatabaseTest extends SapphireTest {
 		$this->assertFalse($db->canLock('DatabaseTest'), 'Can\'t lock after aquiring one');
 		$db->releaseLock('DatabaseTest');
 		$this->assertTrue($db->canLock('DatabaseTest'), 'Can lock again after releasing it');
+	}
+
+
+	// ---- tests for cached schema in MYSQLSchemaManager----
+	public function testDropColumnUsingSQLQuery() {
+		if(!(DB::get_conn() instanceof MySQLDatabase)) {
+			$this->markTestSkipped('MySQL only');
+		}
+		$schema = DB::get_schema();
+		$fieldsBefore = array_keys($schema->fieldList('SiteTree'));
+		DB::query('ALTER TABLE SiteTree DROP COLUMN Title');
+		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
+		$deletedFields = array_values(array_diff($fieldsBefore, $fieldsAfter));
+		$this->assertEquals(
+			array('Title'),
+			$deletedFields
+		);
+
+		$this->assertEquals(sizeof($fieldsBefore), sizeof($fieldsAfter)+1);
+	}
+
+
+	public function testAddColumnUsingSQLQuery() {
+		if(!(DB::get_conn() instanceof MySQLDatabase)) {
+			$this->markTestSkipped('MySQL only');
+		}
+		$schema = DB::get_schema();
+		$fieldsBefore = array_keys($schema->fieldList('SiteTree'));
+		DB::query('ALTER TABLE SiteTree ADD EditorID INTEGER');
+		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
+		$newFields = array_values(array_diff($fieldsAfter, $fieldsBefore));
+		$this->assertEquals(
+			array('EditorID'),
+			$newFields
+		);
+		$this->assertEquals(sizeof($fieldsBefore), sizeof($fieldsAfter)-1);
+	}
+
+
+	public function testRenameTableUsingSQLQuery() {
+		if(!(DB::get_conn() instanceof MySQLDatabase)) {
+			$this->markTestSkipped('MySQL only');
+		}
+		$schema = DB::get_schema();
+		$fieldsBefore = array_keys($schema->fieldList('SiteTree'));
+		DB::query('ALTER TABLE SiteTree RENAME SiteTreeNot');
+		$fieldsAfter = array_keys($schema->fieldList('SiteTreeNot'));
+		$this->assertEquals(
+			$fieldsBefore,
+			$fieldsAfter
+		);
+
+		// Try and get the fields for SiteTree.  This will fail as the table
+		// has been renamed
+		try {
+			$fields = $schema->fieldList('SiteTree');
+			$this->fail('Cannot get field list for non existent table');
+		} catch (Exception $e) {
+			$message = $e->getMessage();
+			$message = preg_replace( "/\r|\n/", "", $message );
+			error_log('MESSAGE:'.$message);
+			$expected = "'Couldn't run query:\n\nwibble";
+			$this->assertStringStartsWith(
+				'Couldn\'t run query:SHOW FULL FIELDS IN "SiteTree"',
+				$message
+			);
+		}
+	}
+
+
+	public function testAddIndexUsingSQLQuery() {
+		if(!(DB::get_conn() instanceof MySQLDatabase)) {
+			$this->markTestSkipped('MySQL only');
+		}
+		$schema = DB::get_schema();
+		$indexesBefore = array_keys($schema->indexList('SiteTree'));
+		$sql = 'CREATE INDEX TestIndex ON SiteTree(Title) USING BTREE';
+		DB::query($sql);
+		$indexesAfter = array_keys($schema->indexList('SiteTree'));
+		$newIndexes = array_values(array_diff($indexesAfter, $indexesBefore));
+		$this->assertEquals(
+			array('TestIndex'),
+			$newIndexes
+		);
+		$this->assertEquals(sizeof($indexesBefore), sizeof($indexesAfter)-1);
+	}
+
+	public function testDropIndexUsingSQLQuery() {
+		if(!(DB::get_conn() instanceof MySQLDatabase)) {
+			$this->markTestSkipped('MySQL only');
+		}
+		$schema = DB::get_schema();
+		$indexesBefore = array_keys($schema->indexList('SiteTree'));
+		$sql = 'DROP INDEX URLSegment ON SiteTree';
+		DB::query($sql);
+		$indexesAfter = array_keys($schema->indexList('SiteTree'));
+		$droppedIndexes = array_values(array_diff($indexesBefore, $indexesAfter));
+		$this->assertEquals(
+			array('URLSegment'),
+			$droppedIndexes
+		);
+		$this->assertEquals(sizeof($indexesBefore), sizeof($indexesAfter)+1);
 	}
 
 }
