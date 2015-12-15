@@ -285,16 +285,6 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	/**
-	 * Flush the field list cache for the given table
-	 * @param  string $tableName name of a table in the database
-	 */
-	private function flushCachedFieldList($tableName) {
-		if (isset($this->_cached_field_list[$tableName])) {
-			$this->_cached_field_list[$tableName] = array();
-		}
-	}
-
-	/**
 	 * Create an index on a table.
 	 *
 	 * @param string $tableName The name of the table.
@@ -338,7 +328,6 @@ class MySQLSchemaManager extends DBSchemaManager {
 	public function indexList($table) {
 		$indexList = isset($this->_cached_index_list[$table]) ? $this->_cached_index_list[$table] : null;
 		if (empty($indexList)) {
-
 			$indexes = $this->query("SHOW INDEXES IN \"$table\"");
 			$groupedIndexes = array();
 			$indexList = array();
@@ -377,6 +366,16 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	/**
+	* Flush the field list cache for the given table
+	* @param  string $tableName name of a table in the database
+	*/
+	private function flushCachedFieldList($tableName) {
+		if (isset($this->_cached_field_list[$tableName])) {
+			$this->_cached_field_list[$tableName] = array();
+		}
+	}
+
+	/**
 	 * Flush the index list cache for the given table
 	 * @param  string $tableName name of a table in the database
 	 */
@@ -384,6 +383,14 @@ class MySQLSchemaManager extends DBSchemaManager {
 		if (isset($this->_cached_index_list[$tableName])) {
 			$this->_cached_index_list[$tableName] = array();
 		}
+	}
+
+	/**
+	 * Flush all of the cached schema
+	 */
+	public function flushCachedSchema() {
+		$this->_cached_field_list = array();
+		$this->_cached_index_list = array();
 	}
 
 	public function tableList() {
