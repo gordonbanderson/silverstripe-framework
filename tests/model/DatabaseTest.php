@@ -87,8 +87,6 @@ class DatabaseTest extends SapphireTest {
 	public function testSchemaUpdateChecking() {
 		$schema = DB::get_schema();
 
-		error_log('SCHEMA:'.get_class($schema));
-
 		// Initially, no schema changes necessary
 		$test = $this;
 		$schema->schemaUpdate(function() use ($test, $schema) {
@@ -155,29 +153,12 @@ class DatabaseTest extends SapphireTest {
 
 
 	// ---- tests for cached schema in MYSQLSchemaManager----
-	public function testDropColumnUsingSQLQuery() {
+	public function testAddDropColumnUsingSQLQuery() {
 		if(!(DB::get_conn() instanceof MySQLDatabase)) {
 			$this->markTestSkipped('MySQL only');
 		}
 		$schema = DB::get_schema();
-		$fieldsBefore = array_keys($schema->fieldList('SiteTree'));
-		DB::query('ALTER TABLE SiteTree DROP COLUMN Title');
-		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
-		$deletedFields = array_values(array_diff($fieldsBefore, $fieldsAfter));
-		$this->assertEquals(
-			array('Title'),
-			$deletedFields
-		);
 
-		$this->assertEquals(sizeof($fieldsBefore), sizeof($fieldsAfter)+1);
-	}
-
-
-	public function testAddColumnUsingSQLQuery() {
-		if(!(DB::get_conn() instanceof MySQLDatabase)) {
-			$this->markTestSkipped('MySQL only');
-		}
-		$schema = DB::get_schema();
 		$fieldsBefore = array_keys($schema->fieldList('SiteTree'));
 		DB::query('ALTER TABLE SiteTree ADD EditorID INTEGER');
 		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
@@ -187,7 +168,12 @@ class DatabaseTest extends SapphireTest {
 			$newFields
 		);
 		$this->assertEquals(sizeof($fieldsBefore), sizeof($fieldsAfter)-1);
+
+		DB::query('ALTER TABLE SiteTree DROP COLUMN EditorID');
+		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
+		$this->assertEquals($fieldsBefore, $fieldsAfter);
 	}
+
 
 
 	public function testRenameTableUsingSQLQuery() {
@@ -211,17 +197,20 @@ class DatabaseTest extends SapphireTest {
 		} catch (Exception $e) {
 			$message = $e->getMessage();
 			$message = preg_replace( "/\r|\n/", "", $message );
-			error_log('MESSAGE:'.$message);
 			$expected = "'Couldn't run query:\n\nwibble";
 			$this->assertStringStartsWith(
 				'Couldn\'t run query:SHOW FULL FIELDS IN "SiteTree"',
 				$message
 			);
 		}
+
+		DB::query('ALTER TABLE SiteTreeNot RENAME SiteTree');
+		$fieldsAfter = array_keys($schema->fieldList('SiteTree'));
+		$this->assertEquals($fieldsBefore, $fieldsAfter);
 	}
 
 
-	public function testAddIndexUsingSQLQuery() {
+	public function testAddAndDropIndexUsingSQLQuery() {
 		if(!(DB::get_conn() instanceof MySQLDatabase)) {
 			$this->markTestSkipped('MySQL only');
 		}
@@ -236,25 +225,19 @@ class DatabaseTest extends SapphireTest {
 			$newIndexes
 		);
 		$this->assertEquals(sizeof($indexesBefore), sizeof($indexesAfter)-1);
-	}
 
-	public function testDropIndexUsingSQLQuery() {
-		if(!(DB::get_conn() instanceof MySQLDatabase)) {
-			$this->markTestSkipped('MySQL only');
-		}
-		$schema = DB::get_schema();
 		$indexesBefore = array_keys($schema->indexList('SiteTree'));
-		$sql = 'DROP INDEX URLSegment ON SiteTree';
+		$sql = 'DROP INDEX TestIndex ON SiteTree';
 		DB::query($sql);
 		$indexesAfter = array_keys($schema->indexList('SiteTree'));
 		$droppedIndexes = array_values(array_diff($indexesBefore, $indexesAfter));
 		$this->assertEquals(
-			array('URLSegment'),
+			array('TestIndex'),
 			$droppedIndexes
 		);
 		$this->assertEquals(sizeof($indexesBefore), sizeof($indexesAfter)+1);
-	}
 
+	}
 }
 
 class DatabaseTest_MyObject extends DataObject implements TestOnly {
