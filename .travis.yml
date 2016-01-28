@@ -7,9 +7,13 @@ addons:
     packages:
       - tidy
 
+before_install:
+  - pip install --user codecov
+
 env:
   global:
-    - TRAVIS_NODE_VERSION="4.2.0"
+    - MODULE_PATH=framework
+    - COVERAGE_TESTS=0
     - CORE_RELEASE=master
     - "ARTIFACTS_AWS_REGION=us-east-1"
     - "ARTIFACTS_S3_BUCKET=silverstripe-travis-artifacts"
@@ -18,16 +22,57 @@ env:
 
 matrix:
   include:
-    - php: 5.5
-      env: DB=MYSQL
-    - php: 5.5
-      env: DB=PGSQL
-    - php: 5.5
-      env: DB=SQLITE
+    # Run coverage tests in parallel - each number is a different suite of tests
     - php: 5.6
-      env: DB=MYSQL PDO=1
+      env: DB=MYSQL COVERAGE_TESTS=1
     - php: 5.6
-      env: DB=MYSQL BEHAT_TEST=1 JS_SANITY_CHECK=1
+      env: DB=MYSQL COVERAGE_TESTS=2
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=3
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=4
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=5
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=6
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=7
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=8
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=9
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=10
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=11
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=12
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=13
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=14
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=15
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=16
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=17
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=18
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=19
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=20
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=21
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=22
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=23
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=24
+    - php: 5.6
+      env: DB=MYSQL COVERAGE_TESTS=25
 
 before_script:
 # Until http://pecl.php.net/package/imagick is working again
@@ -37,19 +82,45 @@ before_script:
  - git clone git://github.com/silverstripe-labs/silverstripe-travis-support.git ~/travis-support
  - "if [ \"$BEHAT_TEST\" = \"\" ]; then php ~/travis-support/travis_setup.php --source `pwd` --target ~/builds/ss; fi"
  - "if [ \"$BEHAT_TEST\" = \"1\" ]; then php ~/travis-support/travis_setup.php --source `pwd` --target ~/builds/ss --require silverstripe/behat-extension; fi"
- - "if [ \"JS_SANITY_CHECK\" = \"1\" ]; then nvm install $TRAVIS_NODE_VERSION && npm install; fi"
  - cd ~/builds/ss
  - php ~/travis-support/travis_setup_selenium.php --if-env BEHAT_TEST
  - php ~/travis-support/travis_setup_php54_webserver.php --if-env BEHAT_TEST
 
 script:
- - "if [ \"$BEHAT_TEST\" = \"\" ]; then vendor/bin/phpunit framework/tests; fi"
- - "if [ \"$BEHAT_TEST\" = \"\" ]; then vendor/bin/phpunit framework/admin/tests; fi"
- - "if [ \"$BEHAT_TEST\" = \"1\" ]; then vendor/bin/behat @framework; fi"
- - "if [ \"JS_SANITY_CHECK\" = \"1\" ]; then npm run sanity; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"1\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/api; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"2\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/control; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"3\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/email; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"4\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/forms; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"5\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/integration; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"6\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/model; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"7\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/phpcs; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"8\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/search; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"9\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/templates; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"10\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/assets; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"11\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/core; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"12\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/i18n; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"13\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/javascript; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"14\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/oembed; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"15\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/security; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"16\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/testing; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"17\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/cache; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"18\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/dev; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"19\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/filesystem; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"20\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/injector; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"21\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/parsers; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"22\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/tasks; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"23\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/view; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"24\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/admin/tests; fi"
+ - "if [ \"$COVERAGE_TESTS\" = \"25\" ]; then vendor/bin/phpunit --coverage-clover=coverage.clover $MODULE_PATH/tests/*Test.php; fi"
+
 
 after_failure:
  - php ~/travis-support/travis_upload_artifacts.php --if-env BEHAT_TEST,ARTIFACTS_AWS_SECRET_ACCESS_KEY --target-path $TRAVIS_REPO_SLUG/$TRAVIS_BUILD_ID/$TRAVIS_JOB_ID --artifacts-base-url https://s3.amazonaws.com/$ARTIFACTS_S3_BUCKET/
+  - mv coverage.clover ~/build/$TRAVIS_REPO_SLUG/
+  - cd ~/build/$TRAVIS_REPO_SLUG
+  - wget https://scrutinizer-ci.com/ocular.phar
+  - php ocular.phar code-coverage:upload --format=php-clover coverage.clover
+  - codecov
 
 branches:
   except:
@@ -57,6 +128,14 @@ branches:
     - 2.2
     - 2.3
     - translation-staging
+
+# Generate code coverage
+after_success:
+  - mv coverage.clover ~/build/$TRAVIS_REPO_SLUG/
+  - cd ~/build/$TRAVIS_REPO_SLUG
+  - wget https://scrutinizer-ci.com/ocular.phar
+  - php ocular.phar code-coverage:upload --format=php-clover coverage.clover
+  - codecov
 
 #  global:
 #   - secure: "AZmjVPtUD8JBA7ag4ULlEwEKXSEZbIUjDHeRBFugaOtdsn5yigGLmwYbzsg2tq7k7UkdbbAlGct0SUbiRJb9F2wPA5+eUd/p49fgDIU6CTSWIlT87H2BwgOrxKwS9sDwxLptPFM6vWQ8JKYSNGmVIepie9kQZbu4L2k5k6B69jQ="
