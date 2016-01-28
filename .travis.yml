@@ -130,7 +130,7 @@ branches:
     - translation-staging
 
 # Generate code coverage
-after_success:
+after_script:
   - mv coverage.clover ~/build/$TRAVIS_REPO_SLUG/
   - cd ~/build/$TRAVIS_REPO_SLUG
   - wget https://scrutinizer-ci.com/ocular.phar
