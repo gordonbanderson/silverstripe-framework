@@ -71,7 +71,6 @@ before_script:
   - echo 'memory_limit = 2048M' >> ~/.phpenv/versions/$(phpenv version-name)/etc/conf.d/travis.ini
 
 # Install composer dependencies
-  - composer global require hirak/prestissimo
   - composer validate
   - mkdir ./public
   - if [[ $DB == PGSQL ]]; then composer require silverstripe/postgresql:2.x-dev --no-update; fi
